@@ -46,60 +46,86 @@ public class Sim4 {
 		controlOut.jump = 0;
 		controlOut.ALU.op = 0;
 		controlOut.ALU.bNegate = 0;
+		controlOut.extra1 = 0;
+		controlOut.extra2 = 0;
+		controlOut.extra3 = 0;
 
 		// R-Type Instructions
 		if (fields.opcode == 0) {
+			// ADD, ADDU
 			if (fields.funct == 32 || fields.funct == 33) {
 				controlOut.ALU.op = 2;
 				controlOut.regDst = 1;
 				controlOut.regWrite = 1;
+				// SUB SUBU
 			} else if (fields.funct == 34 || fields.funct == 35) {
 				controlOut.ALU.op = 2;
 				controlOut.ALU.bNegate = 1;
 				controlOut.regDst = 1;
 				controlOut.regWrite = 1;
+				// AND
 			} else if (fields.funct == 36) {
 				controlOut.ALU.op = 0;
 				controlOut.regDst = 1;
 				controlOut.regWrite = 1;
+				// OR
 			} else if (fields.funct == 37) {
 				controlOut.ALU.op = 1;
 				controlOut.regDst = 1;
 				controlOut.regWrite = 1;
+				// XOR
 			} else if (fields.funct == 38) {
 				controlOut.ALU.op = 4;
 				controlOut.regDst = 1;
 				controlOut.regWrite = 1;
+				// SLT
 			} else if (fields.funct == 42) {
 				controlOut.ALU.op = 3;
 				controlOut.ALU.bNegate = 1;
 				controlOut.regDst = 1;
 				controlOut.regWrite = 1;
+				// SLL
+			} else if (fields.funct == 0) {
+				controlOut.ALU.op = 5;
+				controlOut.ALUsrc = 1;
+				controlOut.regDst = 1;
+				controlOut.regWrite = 1;
 			}
 			// Immediate and Jump Instructions
+			// ADDI, ADDIU
 		} else if (fields.opcode == 8 || fields.opcode == 9) {
 			controlOut.ALU.op = 2;
 			controlOut.ALUsrc = 1;
 			controlOut.regWrite = 1;
+			// ANDI
 		} else if (fields.opcode == 10) {
 			controlOut.ALU.op = 3;
 			controlOut.ALU.bNegate = 1;
 			controlOut.ALUsrc = 1;
 			controlOut.regWrite = 1;
+			// LW
 		} else if (fields.opcode == 35) {
 			controlOut.ALU.op = 2;
 			controlOut.ALUsrc = 1;
 			controlOut.memRead = 1;
 			controlOut.memToReg = 1;
 			controlOut.regWrite = 1;
+			// SW
 		} else if (fields.opcode == 43) {
 			controlOut.ALU.op = 2;
 			controlOut.ALUsrc = 1;
 			controlOut.memWrite = 1;
+			// BEQ
 		} else if (fields.opcode == 4) {
 			controlOut.ALU.op = 2;
 			controlOut.ALU.bNegate = 1;
 			controlOut.branch = 1;
+			// BNE
+		} else if (fields.opcode == 5) {
+			controlOut.ALU.op = 2;
+			controlOut.ALU.bNegate = 1;
+			controlOut.branch = 1;
+			// JUMP
 		} else if (fields.opcode == 2) {
 			controlOut.jump = 1;
 		}
@@ -113,23 +139,32 @@ public class Sim4 {
 	}
 
 	/*
-	 * This function will retrieve the first ALUinput, in this case the rsVal.
+	 * This function will retrieve the first ALUinput.
 	 */
 	public int getALUinput1(CPUControl controlIn, InstructionFields fieldsIn, int rsVal, int rtVal, int reg32,
 			int reg33, int oldPC) {
+		if (controlIn.ALU.op == 5) {
+			return rtVal;
+		}
 		return rsVal;
 	}
 
 	/*
-	 * This function will return the second ALUinput (either the imm32 or rtVal).
+	 * This function will return the second ALUinput.
 	 */
 	public int getALUinput2(CPUControl controlIn, InstructionFields fieldsIn, int rsVal, int rtVal, int reg32,
 			int reg33, int oldPC) {
 		if (controlIn.ALUsrc == 1) {
+			if (controlIn.ALU.op == 0 || controlIn.ALU.op == 1 || controlIn.ALU.op == 4) {
+				return fieldsIn.imm16;
+			} else if (controlIn.ALU.op == 2 && controlIn.branch == 2) {
+				return fieldsIn.imm16;
+			}
 			return fieldsIn.imm32;
-		} else {
-			return rtVal;
+		} else if (controlIn.ALU.op == 5) {
+			return fieldsIn.shamt;
 		}
+		return rtVal;
 	}
 
 	/*
@@ -166,6 +201,7 @@ public class Sim4 {
 	 */
 	public void executeMEM(CPUControl controlIn, ALUResult aluResultIn, int rsVal, int rtVal, int[] memory,
 			MemResult resultOut) {
+		resultOut.readVal = 0;
 		if (controlIn.memRead == 1) {
 			resultOut.readVal = memory[aluResultIn.result / 4];
 		}
@@ -178,13 +214,15 @@ public class Sim4 {
 	 * This function will determine the next PC value.
 	 */
 	public int getNextPC(InstructionFields fields, CPUControl controlIn, int aluZero, int rsVal, int rtVal, int oldPC) {
-		if (controlIn.branch == 1 && aluZero == 1) {
+		// Handles BEQ and BNE branch code
+		if (controlIn.branch == 1 && ((fields.opcode == 4 && aluZero == 1) || (fields.opcode == 5 && aluZero == 0))) {
 			return oldPC + 4 + (fields.imm32 << 2);
-		} else if (controlIn.jump == 1) {
-			return ((oldPC + 4) & 0xF0000000) | (fields.address << 2);
-		} else {
-			return oldPC + 4;
 		}
+		// Handles Jump Instructions
+		if (controlIn.jump == 1) {
+			return ((oldPC + 4) & 0xF0000000) | (fields.address << 2);
+		}
+		return oldPC + 4;
 	}
 
 	/*
